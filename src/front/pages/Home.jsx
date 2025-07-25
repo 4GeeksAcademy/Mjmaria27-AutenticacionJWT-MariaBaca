@@ -1,52 +1,50 @@
-import React, { useEffect } from "react"
-import rigoImageUrl from "../assets/img/rigo-baby.jpg";
-import useGlobalReducer from "../hooks/useGlobalReducer.jsx";
+import { useEffect, useState } from "react";
+import { useGlobalReducer } from "../hooks/useGlobalReducer";
 
 export const Home = () => {
+  const { store, dispatch } = useGlobalReducer();
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState(null);
 
-	const { store, dispatch } = useGlobalReducer()
+  const loadMessage = async () => {
+    try {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL;
 
-	const loadMessage = async () => {
-		try {
-			const backendUrl = import.meta.env.VITE_BACKEND_URL
+      if (!backendUrl) {
+        throw new Error("La variable VITE_BACKEND_URL no está definida en el .env");
+      }
 
-			if (!backendUrl) throw new Error("VITE_BACKEND_URL is not defined in .env file")
+      const response = await fetch(`${backendUrl}/api/hello`);
+      const data = await response.json();
 
-			const response = await fetch(backendUrl + "/api/hello")
-			const data = await response.json()
+      if (response.ok && data.message) {
+        dispatch({ type: "set_hello", payload: data.message });
+      } else {
+        throw new Error(data.msg || "Respuesta inválida del backend");
+      }
+    } catch (error) {
+      setErrorMsg(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-			if (response.ok) dispatch({ type: "set_hello", payload: data.message })
+  useEffect(() => {
+    loadMessage();
+  }, []);
 
-			return data
+  return (
+    <div className="container mt-5 text-center">
+      <h1 className="display-5">Bienvenido</h1>
+      <p className="lead">Este es tu inicio en la aplicación.</p>
 
-		} catch (error) {
-			if (error.message) throw new Error(
-				`Could not fetch the message from the backend.
-				Please check if the backend is running and the backend port is public.`
-			);
-		}
-
-	}
-
-	useEffect(() => {
-		loadMessage()
-	}, [])
-
-	return (
-		<div className="text-center mt-5">
-			<h1 className="display-4">Hello Rigo!!</h1>
-			<p className="lead">
-				<img src={rigoImageUrl} className="img-fluid rounded-circle mb-3" alt="Rigo Baby" />
-			</p>
-			<div className="alert alert-info">
-				{store.message ? (
-					<span>{store.message}</span>
-				) : (
-					<span className="text-danger">
-						Loading message from the backend (make sure your python 🐍 backend is running)...
-					</span>
-				)}
-			</div>
-		</div>
-	);
-}; 
+      <div className="mt-4">
+        {loading && <div className="alert alert-info">Cargando mensaje...</div>}
+        {errorMsg && <div className="alert alert-danger">{errorMsg}</div>}
+        {!loading && !errorMsg && store.message && (
+          <div className="alert alert-success">{store.message}</div>
+        )}
+      </div>
+    </div>
+  );
+};

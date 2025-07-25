@@ -1,24 +1,99 @@
-// Import necessary hooks and functions from React.
-import { useContext, useReducer, createContext } from "react";
-import storeReducer, { initialStore } from "../store"  // Import the reducer and the initial state.
+import {
+  useContext,
+  useReducer,
+  createContext,
+  useMemo,
+} from "react";
+import storeReducer, { initialStore } from "../store.js";
 
-// Create a context to hold the global state of the application
-// We will call this global state the "store" to avoid confusion while using local states
-const StoreContext = createContext()
+// Exportamos el contexto para usarlo en otros hooks personalizados
+export const StoreContext = createContext();
 
-// Define a provider component that encapsulates the store and warps it in a context provider to 
-// broadcast the information throught all the app pages and components.
 export function StoreProvider({ children }) {
-    // Initialize reducer with the initial state.
-    const [store, dispatch] = useReducer(storeReducer, initialStore())
-    // Provide the store and dispatch method to all child components.
-    return <StoreContext.Provider value={{ store, dispatch }}>
-        {children}
+  const [store, dispatch] = useReducer(storeReducer, initialStore());
+
+  const actions = useMemo(() => ({
+    login: async (email, password) => {
+      try {
+        const resp = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/login`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          }
+        );
+
+        const data = await resp.json();
+        console.log("[LOGIN] Respuesta del backend:", data);
+
+        if (resp.ok && data.token) {
+          localStorage.setItem("jwt_token", data.token);
+          dispatch({
+            type: "LOGIN",
+            payload: { token: data.token, user_data: data.user },
+          });
+          return true;
+        } else {
+          console.error("[LOGIN] Error:", data.msg || "Token no recibido");
+          return false;
+        }
+      } catch (error) {
+        console.error("[LOGIN] Error de red o servidor:", error);
+        return false;
+      }
+    },
+
+    logout: () => {
+      localStorage.removeItem("jwt_token");
+      dispatch({ type: "LOGOUT" });
+      dispatch({ type: "SET_BACKEND_CART", payload: [] });
+      dispatch({ type: "ADD_ME", payload: null });
+    },
+
+    getUserInfo: async () => {
+      const token = localStorage.getItem("jwt_token");
+
+      if (!token || token === "null" || token === "undefined" || token.trim() === "") {
+        console.warn("[getUserInfo] Token inválido o ausente.");
+        return false;
+      }
+
+      try {
+        const response = await fetch(
+          `${import.meta.env.VITE_BACKEND_URL}/me`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.warn("[getUserInfo] Error de backend:", errorData);
+          return false;
+        }
+
+        const data = await response.json();
+        dispatch({ type: "ADD_ME", payload: data });
+        return true;
+      } catch (error) {
+        console.error("[getUserInfo] Error al obtener usuario:", error);
+        return false;
+      }
+    }
+  }), [dispatch]);
+
+  return (
+    <StoreContext.Provider value={{ store, dispatch, actions }}>
+      {children}
     </StoreContext.Provider>
+  );
 }
 
-// Custom hook to access the global state and dispatch function.
-export default function useGlobalReducer() {
-    const { dispatch, store } = useContext(StoreContext)
-    return { dispatch, store };
+// Hook personalizado para consumir el contexto
+export function useGlobalReducer() {
+  return useContext(StoreContext);
 }
